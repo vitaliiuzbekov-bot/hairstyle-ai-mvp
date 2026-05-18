@@ -1,0 +1,16 @@
+{
+  "name": "НейроСтилист",
+  "short_name": "СтилистAI",
+  "description": "ИИ-подбор причесок и стрижек на основе формы лица.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050508",
+  "theme_color": "#050508",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}

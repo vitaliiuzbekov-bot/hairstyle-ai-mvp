@@ -1,0 +1,22 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the application with generation limits",
+      "type": "object",
+      "properties": {
+        "tgId": { "type": "number", "description": "Telegram user ID if available" },
+        "tgUsername": { "type": "string", "description": "Telegram username if available" },
+        "generationsLeft": { "type": "number", "description": "Tokens for generations" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["generationsLeft", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user data including generation balance"
+    }
+  }
+}

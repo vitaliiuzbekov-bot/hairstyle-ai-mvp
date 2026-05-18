@@ -1,0 +1,10 @@
+{
+  "name": "НейроСтилист",
+  "description": "ИИ-подбор причесок и стрижек на основе формы лица",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
