@@ -276,6 +276,11 @@ async function startServer() {
 
   app.post("/api/generate-reference", async (req, res) => {
     try {
+      const apiKey = getApiKeyFromRequest(req);
+      if (!apiKey) {
+        return res.status(401).json({ error: "API-ключ не настроен. Пожалуйста, введите свой API-ключ в настройках (⚙️)." });
+      }
+      const ai = new GoogleGenAI({ apiKey });
       const { gender, keyword } = req.body;
       if (!keyword) {
         return res.status(400).json({ error: "Missing parameters" });
@@ -291,21 +296,42 @@ async function startServer() {
 
       const prompt = `High-end editorial portrait of a ${descriptor} modeling a photorealistic haircut, style exactly matching "${keyword}", professional salon photography, studio lighting, hyper-realistic hair texture, trending on pinterest, 8k resolution`;
 
-      const seed = Math.floor(Math.random() * 10000000);
-      const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true&seed=${seed}`;
-      
-      const response = await fetch(url);
-      if (!response.ok) {
-         throw new Error("Не удалось сгенерировать референсное изображение.");
+      const imageGenerationPromise = generateWithRetry(() =>
+        ai.models.generateContent({
+          model: "gemini-2.5-flash-image",
+          contents: {
+            parts: [
+              {
+                text: prompt,
+              },
+            ],
+          },
+          config: {
+            responseModalities: [Modality.IMAGE],
+          },
+        })
+      );
+
+      const imgRes = await imageGenerationPromise;
+      let finalImageUrl = "";
+      for (const part of imgRes.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          finalImageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+          break;
+        }
       }
-      
-      const arrayBuffer = await response.arrayBuffer();
-      const base64 = Buffer.from(arrayBuffer).toString('base64');
-      const finalImageUrl = `data:image/jpeg;base64,${base64}`;
+
+      if (!finalImageUrl) {
+        throw new Error("Не удалось сгенерировать референсное изображение.");
+      }
 
       res.json({ imageUrl: finalImageUrl });
     } catch (err: any) {
       console.error("Reference gen error:", err);
+      const errMsg = String(err.message || "");
+      if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("quota")) {
+        return res.status(429).json({ error: "Превышен бесплатный лимит Google Gemini. Зайдите в настройки (⚙️), чтобы узнать, как бесплатно получить свой личный ключ." });
+      }
       res.status(500).json({ error: err.message || "Ошибка генерации референса" });
     }
   });
@@ -379,53 +405,32 @@ async function startServer() {
 
       let consultationHtml = "<p>Консультация недоступна.</p>";
       let finalImageUrl = "";
-      let warningMsg = "";
 
       try {
-        const textRes = await textConsultationPromise;
+        const [textRes, imgRes] = await Promise.all([textConsultationPromise, imageGenerationPromise]);
+        
         try {
           const text = textRes.text?.trim() || "{}";
-          // Find JSON block if it's wrapped
-          const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-          const jsonStr = match ? match[1] : text;
-          const data = JSON.parse(jsonStr);
+          const data = JSON.parse(text);
           consultationHtml = data.consultationHtml || consultationHtml;
         } catch (e) {
           console.error("Failed to parse text consultation:", e);
         }
-      } catch (e) {
-        console.error("Failed to fetch text consultation:", e);
-      }
 
-      try {
-        const imgRes = await imageGenerationPromise;
         const base64ImageBytes = imgRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
         if (base64ImageBytes) {
            finalImageUrl = `data:image/jpeg;base64,${base64ImageBytes}`;
         } else {
            throw new Error("Не удалось сгенерировать изображение (пустой ответ).");
         }
-      } catch (err: any) {
-        console.error("Image generation failed:", err);
-        let errorMsg = String(err.message || "");
-        if (
-          errorMsg.includes("429") ||
-          errorMsg.includes("quota") ||
-          errorMsg.includes("RESOURCE_EXHAUSTED") ||
-          errorMsg.includes("limit: 0")
-        ) {
-          warningMsg = "Анализ стиля готов! Однако для изменения фото (AR) требуется Gemini API ключ с подключенным биллингом (Free-Tier не поддерживает image-to-image).";
-        } else if (errorMsg.includes("API key expired")) {
-           warningMsg = "Анализ готов. Срок действия ключа для фото истек.";
-        } else {
-          warningMsg = "Анализ стиля готов, но генерация фото не удалась.";
-        }
+      } catch (e: any) {
+        console.error("Parallel generation failed.", e);
+        throw e;
       }
         
       return res.json({ 
         consultationHtml: consultationHtml,
-        imageUrl: finalImageUrl,
-        warning: warningMsg
+        imageUrl: finalImageUrl 
       });
     } catch (err: any) {
       console.error(err);

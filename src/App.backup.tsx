@@ -22,9 +22,7 @@ const LazyImage = ({ keyword, gender, uniqueName, description, className, autoLo
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-custom-api-key': apiKey || '',
-                    'x-hf-token': localStorage.getItem('hfToken') || '',
-          'x-modelslab-key': localStorage.getItem('modelslabKey') || ''
+          'x-custom-api-key': apiKey
         },
         body: JSON.stringify({ keyword, gender })
       });
@@ -42,13 +40,9 @@ const LazyImage = ({ keyword, gender, uniqueName, description, className, autoLo
       }
     } catch(err: any) {
       console.error("Failed to load reference image", err);
-      let errMsg = err.message || "Сбой загрузки";
-      if (err.message && (err.message.toLocaleLowerCase().includes('лимит') || err.message.includes('429') || err.message.includes('quota'))) {
-        errMsg = "ЛИМИТ. НУЖЕН КЛЮЧ В ⚙️";
-      } else if (err.message && err.message.toLocaleLowerCase().includes('ключ')) {
-        errMsg = "НУЖЕН КЛЮЧ В ⚙️";
-      } else if (errMsg.length > 50) {
-        errMsg = errMsg.substring(0, 47) + "...";
+      let errMsg = "Сбой загрузки";
+      if (err.message && (err.message.includes('лимит') || err.message.includes('ключ'))) {
+        errMsg = "Нужен API-ключ";
       }
       setErrorString(errMsg);
     }
@@ -143,23 +137,13 @@ export default function App() {
   const [userId, setUserId] = useState<string | null>(null);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [hfToken, setHfToken] = useState<string>(() => {
-    return localStorage.getItem('hfToken') || '';
-  });
-  const [modelslabKey, setModelslabKey] = useState<string>(() => {
-    return localStorage.getItem('modelslabKey') || '';
-  });
-  const [customGeminiApiKey, setCustomGeminiApiKey] = useState<string>(() => {
+  const [customApiKey, setCustomApiKey] = useState<string>(() => {
     return localStorage.getItem('customGeminiApiKey') || '';
   });
 
-  const handleSaveApiKey = (hf: string, modelslab: string, gemini: string) => {
-    setHfToken(hf);
-    setModelslabKey(modelslab);
-    setCustomGeminiApiKey(gemini);
-    localStorage.setItem('hfToken', hf);
-    localStorage.setItem('modelslabKey', modelslab);
-    localStorage.setItem('customGeminiApiKey', gemini);
+  const handleSaveApiKey = (key: string) => {
+    setCustomApiKey(key);
+    localStorage.setItem('customGeminiApiKey', key);
     setIsSettingsOpen(false);
   };
 
@@ -291,7 +275,7 @@ export default function App() {
   };
 
   const checkLimits = async () => {
-    if (modelslabKey) return true;
+    if (customApiKey) return true;
     
     // Always allow, remove limits for now
     try {
@@ -448,9 +432,7 @@ export default function App() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-custom-api-key': customGeminiApiKey || '',
-                    'x-hf-token': hfToken || '',
-          'x-modelslab-key': modelslabKey || ''
+          'x-custom-api-key': customApiKey || ''
         },
         body: JSON.stringify({ imageBase64, imageUrl, mimeType })
       });
@@ -485,21 +467,9 @@ export default function App() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-custom-api-key': customGeminiApiKey || '',
-                    'x-hf-token': hfToken || '',
-          'x-modelslab-key': modelslabKey || ''
+          'x-custom-api-key': customApiKey || ''
         },
-        body: JSON.stringify({ 
-          imageBase64, 
-          imageUrl, 
-          mimeType, 
-          styleKeyword, 
-          styleName,
-          gender: results?.gender || "unknown",
-          faceShape: results?.faceShape || "unknown",
-          hairType: results?.hairType || "unknown",
-          hairDensity: results?.hairDensity || "unknown"
-        })
+        body: JSON.stringify({ imageBase64, imageUrl, mimeType, styleKeyword, styleName })
       });
       
       if (!response.ok) {
@@ -514,10 +484,6 @@ export default function App() {
           ...prev,
           [styleKeyword]: data.consultationHtml
         }));
-      }
-
-      if (data.warning) {
-        setArError(data.warning);
       }
 
       if (data.imageUrl) {
@@ -566,9 +532,7 @@ export default function App() {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-custom-api-key': customGeminiApiKey || '',
-                    'x-hf-token': hfToken || '',
-          'x-modelslab-key': modelslabKey || ''
+          'x-custom-api-key': customApiKey || ''
         },
         body: JSON.stringify({ imageBase64, imageUrl, mimeType: mimeType || "image/jpeg", existingNames })
       });
@@ -1095,102 +1059,65 @@ export default function App() {
 
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-          <div className="glass-panel border border-white/10 rounded-2xl w-full max-w-md shadow-2xl relative max-h-[90vh] flex flex-col overflow-hidden">
-            <div className="p-6 overflow-y-auto flex-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-              <button
-                onClick={() => setIsSettingsOpen(false)}
-                className="absolute top-4 right-4 text-white/40 hover:text-white/80 transition-colors z-10"
-              >
-                <X size={20} />
-              </button>
-              <h2 className="text-xl font-serif text-white/90 mb-4 flex items-center gap-2">
-                <Settings size={20} /> Настройки приложения
-              </h2>
-              <div className="space-y-4">
-                <div className="bg-white/5 p-4 rounded-xl border border-white/10 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-white/90 text-sm font-medium">Бесплатные попытки</h3>
-                    <p className="text-white/60 text-xs mt-1">
-                      {generationsLeft !== null ? (
-                        generationsLeft > 0 ? `Осталось: ${generationsLeft}` : 'Исчерпаны'
-                      ) : 'Загрузка...'}
-                    </p>
-                  </div>
-                  <button
-                    onClick={buyTokens}
-                    disabled={isBuying || !userId}
-                    className="px-4 py-2 rounded-full bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 transition-colors text-sm font-medium border border-yellow-500/30 flex items-center gap-2 shrink-0"
-                  >
-                    <Coins size={16} />
-                    {isBuying ? '...' : '+10 шт'}
-                  </button>
-                </div>
-
+          <div className="glass-panel border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl relative">
+            <button
+              onClick={() => setIsSettingsOpen(false)}
+              className="absolute top-4 right-4 text-white/40 hover:text-white/80 transition-colors"
+            >
+              <X size={20} />
+            </button>
+            <h2 className="text-xl font-serif text-white/90 mb-4 flex items-center gap-2">
+              <Settings size={20} /> Настройки приложения
+            </h2>
+            <div className="mb-6 space-y-4">
+              <div className="bg-white/5 p-4 rounded-xl border border-white/10 flex items-center justify-between">
                 <div>
-                  <label className="block text-[11px] uppercase tracking-widest text-white/40 mb-2 font-semibold hover:text-white/70 transition-colors">
-                    Hugging Face Token (опционально)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="hf_..."
-                    value={hfToken}
-                    onChange={(e) => setHfToken(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white/90 placeholder-white/20 focus:outline-none focus:border-[#2AABEE] mb-4 transition-colors"
-                    autoComplete="off"
-                  />
+                  <h3 className="text-white/90 text-sm font-medium">Бесплатные попытки</h3>
+                  <p className="text-white/60 text-xs mt-1">
+                    {generationsLeft !== null ? (
+                      generationsLeft > 0 ? `Осталось: ${generationsLeft}` : 'Исчерпаны'
+                    ) : 'Загрузка...'}
+                  </p>
+                </div>
+                <button
+                  onClick={buyTokens}
+                  disabled={isBuying || !userId}
+                  className="px-4 py-2 rounded-full bg-yellow-500/20 text-yellow-300 hover:bg-yellow-500/30 transition-colors text-sm font-medium border border-yellow-500/30 flex items-center gap-2"
+                >
+                  <Coins size={16} />
+                  {isBuying ? '...' : '+10 шт'}
+                </button>
+              </div>
 
-                  <label className="block text-[11px] uppercase tracking-widest text-white/40 mb-2 font-semibold hover:text-white/70 transition-colors">
-                    ModelsLab API Key (Stable Diffusion)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="modelslab key..."
-                    value={modelslabKey}
-                    onChange={(e) => setModelslabKey(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white/90 placeholder-white/20 focus:outline-none focus:border-[#2AABEE] mb-4 transition-colors"
-                    autoComplete="off"
-                  />
-
-                  <label className="block text-[11px] uppercase tracking-widest text-white/40 mb-2 font-semibold hover:text-white/70 transition-colors">
-                    Gemini API Key (Для анализа и примерок)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="AIzaSy..."
-                    value={customGeminiApiKey}
-                    onChange={(e) => setCustomGeminiApiKey(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white/90 placeholder-white/20 focus:outline-none focus:border-[#2AABEE] transition-colors"
-                    autoComplete="off"
-                  />
-
-                  <div className="text-xs text-white/60 mt-3 space-y-3">
-                    <p>
-                      Без токенов используются ключи с сервера (Render), но из-за лимитов они могут не работать.
-                    </p>
-                    
-                    <div>
-                      <strong className="text-white">Как получить ModelsLab API Key:</strong>
-                      <ol className="list-decimal pl-4 mt-1 space-y-1">
-                        <li>Зарегистрируйтесь на <a href="https://modelslab.com" target="_blank" rel="noopener noreferrer" className="text-[#2AABEE] hover:underline">modelslab.com</a>.</li>
-                        <li>В личном кабинете слева в меню выберите <strong>API Docs &amp; Keys</strong> -{'>'} <strong>API Keys</strong> (или откройте <a href="https://modelslab.com/dashboard/api-keys" target="_blank" rel="noopener noreferrer" className="text-[#2AABEE] hover:underline">ссылку</a>).</li>
-                        <li>Скопируйте <strong>Default API Key</strong> и вставьте в поле выше. За каждую генерацию будут списываться бесплатные кредиты.</li>
-                      </ol>
-                    </div>
-
-                    <div>
-                      <strong className="text-white">Как получить Hugging Face Token:</strong>
-                      <ol className="list-decimal pl-4 mt-1 space-y-1">
-                        <li>Перейдите на <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener noreferrer" className="text-[#2AABEE] hover:underline">Настройки токенов HF</a>.</li>
-                        <li>Нажмите <strong>Create new token</strong> (любого типа, желательно read, либо Fine-grained).</li>
-                        <li>Скопируйте сгенерированный токен (начинается с hf_) и вставьте выше. Он используется для подготовки маски (бесплатно).</li>
-                      </ol>
-                    </div>
-                  </div>
+              <div>
+                <label className="block text-sm font-medium text-white/60 mb-2">
+                  Пароль администратора / API-ключ
+                </label>
+                <input
+                  type="text"
+                  placeholder="Введите пароль или ключ..."
+                  value={customApiKey}
+                  onChange={(e) => setCustomApiKey(e.target.value)}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white/90 placeholder-white/20 focus:outline-none focus:border-[#2AABEE] transition-colors"
+                  autoComplete="off"
+                />
+                <div className="text-xs text-white/60 mt-3 space-y-2">
+                  <p>
+                    Из-за высоких нагрузок общий лимит может быть исчерпан. Вы можете использовать свой <strong>БЕСПЛАТНЫЙ</strong> личный ключ, чтобы приложение летало.
+                  </p>
+                  <ol className="list-decimal pl-4 space-y-1">
+                    <li>Перейдите на сайт <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-[#2AABEE] hover:underline">Google AI Studio</a>.</li>
+                    <li>Войдите в свой Google аккаунт.</li>
+                    <li>Нажмите кнопку <strong>Create API key</strong>.</li>
+                    <li>Скопируйте ключ и вставьте в поле выше.</li>
+                  </ol>
+                  <p className="text-white/40 italic mt-2 text-[10px]">
+                    Ваш ключ сохраняется только в браузере и используется напрямую для запросов. Если у вас есть код доступа, вы также можете ввести его выше.
+                  </p>
                 </div>
               </div>
             </div>
-            
-            <div className="p-4 border-t border-white/10 bg-white/5 flex justify-end gap-3 mt-auto shrink-0">
+            <div className="flex justify-end gap-3">
               <button
                 onClick={() => setIsSettingsOpen(false)}
                 className="px-4 py-2 rounded-full border border-white/10 text-white/60 hover:text-white/90 hover:bg-white/5 transition-colors text-sm"
@@ -1198,8 +1125,8 @@ export default function App() {
                 Отмена
               </button>
               <button
-                onClick={() => handleSaveApiKey(hfToken, modelslabKey, customGeminiApiKey)}
-                className="px-5 py-2 rounded-full bg-[#2AABEE] hover:bg-[#229ED9] text-white transition-colors text-sm font-medium shadow-[0_0_15px_rgba(42,171,238,0.3)] hover:shadow-[0_0_20px_rgba(42,171,238,0.5)]"
+                onClick={() => handleSaveApiKey(customApiKey)}
+                className="px-4 py-2 rounded-full bg-[#2AABEE] hover:bg-[#229ED9] text-white transition-colors text-sm shadow-sm"
               >
                 Сохранить
               </button>
