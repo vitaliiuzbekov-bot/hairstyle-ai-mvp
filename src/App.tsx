@@ -732,7 +732,7 @@ export default function App() {
                         <input 
                           type="file" 
                           accept="image/*"
-                          capture="environment" 
+                          capture="user" 
                           ref={cameraInputRef} 
                           className="hidden" 
                           onChange={handleFileUpload} 
@@ -1282,7 +1282,7 @@ export default function App() {
                 Отмена
               </button>
               <button
-                onClick={() => handleSaveApiKey(hfToken, modelslabKey, customGeminiApiKey)}
+                onClick={() => handleSaveApiKey(hfToken, modelslabKey, lightxKey, customGeminiApiKey)}
                 className="px-5 py-2 rounded-full bg-[#2AABEE] hover:bg-[#229ED9] text-white transition-colors text-sm font-medium shadow-[0_0_15px_rgba(42,171,238,0.3)] hover:shadow-[0_0_20px_rgba(42,171,238,0.5)]"
               >
                 Сохранить
