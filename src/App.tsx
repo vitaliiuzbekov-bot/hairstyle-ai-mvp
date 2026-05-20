@@ -298,9 +298,14 @@ export default function App() {
   };
 
   const checkLimits = async () => {
-    if (modelslabKey) return true;
+    if (modelslabKey || lightxKey || customGeminiApiKey) return true;
     
-    // Always allow, remove limits for now
+    if (generationsLeft !== null && generationsLeft <= 0) {
+      alert("У вас закончились бесплатные генерации. Вы можете получить дополнительные в настройках или указать свой собственный рабочий API ключ (Gemini, LightX, ModelsLab).");
+      setIsSettingsOpen(true);
+      return false;
+    }
+
     try {
       await consumeToken();
     } catch (err: any) {
