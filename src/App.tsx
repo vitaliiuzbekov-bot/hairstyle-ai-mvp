@@ -360,6 +360,7 @@ export default function App() {
   };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -426,6 +427,9 @@ export default function App() {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = '';
+    }
   };
 
   const triggerFileInput = (e?: React.MouseEvent) => {
@@ -439,6 +443,19 @@ export default function App() {
     }
     setConsentError(false);
     fileInputRef.current?.click();
+  };
+
+  const triggerCameraInput = (e?: React.MouseEvent) => {
+    if (!consentGiven) {
+      if (e) {
+        e.stopPropagation();
+        setConsentError(true);
+        if (navigator.vibrate) navigator.vibrate(200);
+      }
+      return;
+    }
+    setConsentError(false);
+    cameraInputRef.current?.click();
   };
 
   const analyzeImage = async () => {
@@ -671,8 +688,7 @@ export default function App() {
                   {!imageBase64 ? (
                     <div className="flex flex-col items-center w-full">
                       <div 
-                        onClick={triggerFileInput}
-                        className={`w-full border border-dashed rounded-xl glass-panel flex flex-col items-center justify-center min-h-[360px] md:min-h-[440px] cursor-pointer hover:bg-white/5 transition-all group/upload relative ${consentError ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 hover:border-white/20'}`}
+                        className={`w-full border border-dashed rounded-xl glass-panel flex flex-col items-center justify-center min-h-[360px] md:min-h-[440px] relative ${consentError ? 'border-red-500/50 bg-red-500/5' : 'border-white/10 hover:border-white/20'}`}
                       >
                         {consentError && (
                           <div className="absolute top-4 left-0 right-0 flex justify-center animate-pulse">
@@ -681,7 +697,7 @@ export default function App() {
                             </span>
                           </div>
                         )}
-                        <div className={`w-20 h-20 bg-transparent rounded-full flex items-center justify-center mb-6 shadow-sm border border-white/10 transition-all duration-500 ${consentGiven ? 'text-white/90 group-hover/upload:scale-105 group-hover/upload:text-white/90' : 'text-white/40 grayscale'}`}>
+                        <div className={`w-20 h-20 bg-transparent rounded-full flex items-center justify-center mb-6 shadow-sm border border-white/10 transition-all duration-500 ${consentGiven ? 'text-white/90 hover:scale-105 hover:text-white/90' : 'text-white/40 grayscale'}`}>
                           <Upload size={28} strokeWidth={1.5} />
                         </div>
                         <h4 className="text-xl sm:text-2xl font-serif text-white/90 mb-2 tracking-tight text-center">Загрузите селфи</h4>
@@ -689,15 +705,35 @@ export default function App() {
                           Сделайте фото камерой или выберите из галереи. Лицо должно быть хорошо освещено.
                         </p>
                         
-                        <div className={`glass-button text-white/90 border px-6 sm:px-8 py-3.5 sm:py-4 rounded-full text-sm sm:text-base font-medium tracking-wide transition-all flex items-center justify-center gap-2 ${consentGiven ? 'hover:bg-white/10 border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.37)] active:scale-95' : 'opacity-50 border-white/10 grayscale cursor-not-allowed'}`}>
-                          <Camera size={20} />
-                          Сделать или выбрать фото
+                        <div className="flex flex-col sm:flex-row gap-4 w-full px-6 max-w-[400px]">
+                            <button 
+                              onClick={triggerCameraInput}
+                              className={`flex-1 glass-button text-white/90 border py-3 sm:py-3.5 rounded-full text-[13px] sm:text-sm font-medium tracking-wide transition-all flex items-center justify-center gap-2 ${consentGiven ? 'hover:bg-white/10 border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.37)] active:scale-95' : 'opacity-50 border-white/10 grayscale cursor-not-allowed'}`}
+                            >
+                              <Camera size={16} />
+                              Сделать фото
+                            </button>
+                            <button 
+                              onClick={triggerFileInput}
+                              className={`flex-1 glass-button text-white/90 border py-3 sm:py-3.5 rounded-full text-[13px] sm:text-sm font-medium tracking-wide transition-all flex items-center justify-center gap-2 ${consentGiven ? 'hover:bg-white/10 border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.37)] active:scale-95' : 'opacity-50 border-white/10 grayscale cursor-not-allowed'}`}
+                            >
+                              <ImageIcon size={16} />
+                              Галерея
+                            </button>
                         </div>
                         
                         <input 
                           type="file" 
                           accept="image/*" 
                           ref={fileInputRef} 
+                          className="hidden" 
+                          onChange={handleFileUpload} 
+                        />
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          capture="user" 
+                          ref={cameraInputRef} 
                           className="hidden" 
                           onChange={handleFileUpload} 
                         />
