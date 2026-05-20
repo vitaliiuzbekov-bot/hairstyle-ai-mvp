@@ -289,6 +289,7 @@ async function startServer() {
   app.post("/api/generate-reference", async (req, res) => {
     try {
       const { gender, keyword } = req.body;
+      const hfToken = req.headers['x-hf-token'];
       if (!keyword) {
         return res.status(400).json({ error: "Missing parameters" });
       }
@@ -303,17 +304,67 @@ async function startServer() {
 
       const prompt = `High-end editorial portrait of a ${descriptor} modeling a photorealistic haircut, style exactly matching "${keyword}", professional salon photography, studio lighting, hyper-realistic hair texture, trending on pinterest, 8k resolution`;
 
+      let finalImageUrl = "";
+      let lastError = "";
+
+      // Fallback 1: Pollinations
       const seed = Math.floor(Math.random() * 10000000);
       const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=512&height=512&nologo=true&seed=${seed}`;
       
-      const response = await fetch(url);
-      if (!response.ok) {
-         throw new Error("Не удалось сгенерировать референсное изображение.");
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+           const errText = await response.text();
+           console.error("Pollinations error response:", response.status, errText);
+           throw new Error(`Не удалось сгенерировать изображение (Status ${response.status}).`);
+        }
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString('base64');
+        finalImageUrl = `data:image/jpeg;base64,${base64}`;
+      } catch (err: any) {
+        console.error("Reference gen fetch error:", err);
+        lastError += ` [Pollinations: ${err.message}]`;
       }
-      
-      const arrayBuffer = await response.arrayBuffer();
-      const base64 = Buffer.from(arrayBuffer).toString('base64');
-      const finalImageUrl = `data:image/jpeg;base64,${base64}`;
+
+      // Fallback 2: HuggingFace Text-To-Image
+      if (!finalImageUrl) {
+          const activeHfToken = hfToken || process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN;
+          if (activeHfToken) {
+              try {
+                  console.log("Trying HuggingFace (FLUX) for reference...");
+                  const hfRes = await fetch("https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell", {
+                      method: "POST",
+                      headers: {
+                          "Authorization": `Bearer ${activeHfToken}`,
+                          "Content-Type": "application/json"
+                      },
+                      body: JSON.stringify({ inputs: prompt })
+                  });
+                  if (hfRes.ok) {
+                      const hfBlob = await hfRes.arrayBuffer();
+                      const hfB64 = Buffer.from(hfBlob).toString("base64");
+                      finalImageUrl = `data:image/jpeg;base64,${hfB64}`;
+                  } else {
+                      const errText = await hfRes.text();
+                      lastError += ` [HF: ${errText}]`;
+                  }
+              } catch(err: any) {
+                  lastError += ` [HF Err: ${err.message}]`;
+              }
+          } else {
+              lastError += ` [HF: Token not provided]`;
+          }
+      }
+
+      if (!finalImageUrl) {
+          throw new Error(`Не удалось сгенерировать изображение. Ошибки: ${lastError}`);
+      }
 
       res.json({ imageUrl: finalImageUrl });
     } catch (err: any) {
