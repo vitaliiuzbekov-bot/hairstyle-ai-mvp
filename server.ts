@@ -370,6 +370,8 @@ async function startServer() {
       const promptImage = `Change the hairstyle of the person in the image to a photorealistic ${styleKeyword}, keeping their exact face, gender, and identity intact. Do not add any extra objects.`;
 
       const imageGenerationPromise = new Promise<{ imageUrl?: string; warningMsg?: string }>(async (resolve) => {
+        let lastError = "";
+        
         // Fallback 0: LightX (from process.env)
         const lightxKey = lightxKeyFromHeader || process.env.LIGHTX_API_KEY;
         if (lightxKey) {
@@ -405,15 +407,19 @@ async function startServer() {
                             return resolve({ imageUrl: statusData.body.outputUrl || statusData.body.output });
                         } else {
                             console.log("LightX generation failed with status:", statusData);
+                            lastError += ` [LightX: status ${statusData.body?.status}]`;
                             break;
                         }
                         attempts++;
                     }
                 } else {
                     console.error("LightX failed to create task:", data);
+                    throw new Error("LightX: " + (data.message || JSON.stringify(data)));
                 }
-            } catch (err) {
+            } catch (err: any) {
                 console.error("LightX error:", err);
+                lastError += ` [LightX Err: ${err.message}]`;
+                // Don't throw here, just log to fallback
             }
         }
 
@@ -443,9 +449,11 @@ async function startServer() {
                     return resolve({ imageUrl: data.output[0] });
                 } else {
                     console.log("ModelsLab failed, data:", data);
+                    lastError += ` [ModelsLab: ${JSON.stringify(data)}]`;
                 }
-            } catch (err) {
+            } catch (err: any) {
                 console.error("ModelsLab error:", err);
+                lastError += ` [ModelsLab Err: ${err.message}]`;
             }
         }
 
@@ -473,9 +481,11 @@ async function startServer() {
                 } else {
                     const text = await res.text();
                     console.error("HF failed:", text);
+                    lastError += ` [HF: ${text}]`;
                 }
-             } catch (err) {
+             } catch (err: any) {
                 console.error("HuggingFace error:", err);
+                lastError += ` [HF Err: ${err.message}]`;
              }
         }
 
@@ -506,19 +516,19 @@ async function startServer() {
                  customWarning = " ВНИМАНИЕ: Вы вставили ключ Gemini в поле LightX! ";
              }
 
-             let warningMsg = "Анализ стиля готов, но генерация фото не удалась." + customWarning;
+             let warningMsg = `Анализ стиля готов, но генерация фото не удалась. ${customWarning} (Логи ошибок:${lastError} [Gemini Err: ${err.message}])`;
              let errorMsg = String(err.message || "");
              if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED") || errorMsg.includes("limit: 0")) {
-                 warningMsg = "Анализ стиля готов! Однако для генерации фото (AR) нужен работающий ключ. Обратите внимание: Gemini для картинок платный." + customWarning + " Пожалуйста, получите и проверьте ключ LightX, ModelsLab или HuggingFace Token в настройках (⚙️).";
+                 warningMsg = `Анализ стиля готов! Однако для генерации фото (AR) нужен работающий ключ. Обратите внимание: Gemini для картинок платный. ${customWarning} (Ошибки сторонних сервисов:${lastError} [Gemini: ${errorMsg}]) Пожалуйста, проверьте ключ LightX/ModelsLab.`;
              } else if (errorMsg.includes("API key expired")) {
                  warningMsg = "Анализ готов. Срок действия базового ключа истек.";
              } else if (errorMsg.includes("billing")) {
-                 warningMsg = "Анализ стиля готов! Gemini отключил генерацию картинок для бесплатных аккаунтов. Используйте ключ ModelsLab или LightX." + customWarning;
+                 warningMsg = `Анализ стиля готов! Gemini отключил генерацию картинок для бесплатных аккаунтов. Используйте ключ ModelsLab или LightX. ${customWarning} (Ошибки:${lastError})`;
              }
              return resolve({ warningMsg });
         }
         
-        resolve({ warningMsg: "Не удалось сгенерировать изображение (все методы исчерпаны)." });
+        resolve({ warningMsg: `Не удалось сгенерировать изображение (все методы исчерпаны). Ошибки: ${lastError}` });
       });
 
       let consultationHtml = "<p>Консультация недоступна.</p>";
@@ -543,10 +553,21 @@ async function startServer() {
         }
       } catch (e: any) {
         console.error("Failed to fetch text consultation:", e);
+        let cleanErrMsg = e.message || "Ошибка ИИ";
+        
+        // Sometimes the error starts with "[503 UNAVAILABLE] " before the JSON
+        const jsonMatch = cleanErrMsg.match(/(\{.*\})/s);
+        if (jsonMatch) {
+            try {
+                const parsed = JSON.parse(jsonMatch[1]);
+                cleanErrMsg = parsed.error?.message || cleanErrMsg;
+            } catch(_err) {}
+        }
+
         if (e.message && (e.message.includes("429") || e.message.includes("quota") || e.message.includes("limit"))) {
              consultationHtml = `<div class="p-3 bg-red-500/10 border border-red-500/20 rounded-xl mb-2 text-sm text-red-200">Бесплатный лимит Gemini исчерпан. Для работы "Персонального гайда" укажите свой API ключ в настройках (⚙️).</div>`;
         } else {
-             consultationHtml = `<div class="p-3 bg-white/5 border border-white/10 rounded-xl mb-2 text-sm text-white/80">Не удалось сгенерировать консультацию: ${e.message || "Ошибка ИИ"}</div>`;
+             consultationHtml = `<div class="p-3 bg-red-500/10 border border-red-500/20 rounded-xl mb-2 text-sm text-red-200">Сбой генерации (Gemini): ${cleanErrMsg}</div>`;
         }
       }
 
