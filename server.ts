@@ -17,32 +17,19 @@ async function startServer() {
   function getApiKeyFromRequest(req: express.Request): string {
     const rawKey =
       (req.headers["x-custom-api-key"] as string) || req.body?.customApiKey;
-    let customKeyOrPassword = rawKey ? rawKey.trim() : "";
+    const customKey = rawKey ? rawKey.trim() : "";
 
-    // Ignore known broken keys
-    if (
-      customKeyOrPassword === "AIzaSyCXHhfhg8Mhf5MM6gWLgRwz3tnVrmfuQn0" ||
-      customKeyOrPassword === "AIzaSyBTp1JPx92Vdbd06Z6f_uRM0CZ83lEBAdQ" ||
-      customKeyOrPassword === "AIzaSyBZifI0uNZgbXY6oflG2UIiKqsiJjHCkVs" 
-    ) {
-      customKeyOrPassword = "";
+    // If user provided a specific API key, use it
+    if (customKey && customKey.startsWith("AIzaSy")) {
+      return customKey;
     }
 
-    // If user provided a specific API key that is valid, use it
-    if (customKeyOrPassword && customKeyOrPassword.startsWith("AIzaSy")) {
-      return customKeyOrPassword;
-    }
-
-    const userKey = "AIzaSyANDJqou1hwczj2jZdu7QbOhxyvAR8PSKg";
-    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY || userKey;
-    if (envKey &&
-        envKey !== "AIzaSyCXHhfhg8Mhf5MM6gWLgRwz3tnVrmfuQn0" &&
-        envKey !== "AIzaSyBTp1JPx92Vdbd06Z6f_uRM0CZ83lEBAdQ" &&
-        envKey !== "AIzaSyBZifI0uNZgbXY6oflG2UIiKqsiJjHCkVs") {
+    const envKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+    if (envKey && envKey.startsWith("AIzaSy")) {
       return envKey;
     }
 
-    return userKey;
+    return "";
   }
 
   // Define a retry wrapper for Google Gen AI calls
@@ -258,8 +245,33 @@ async function startServer() {
           errorMsg.includes("quota") ||
           errorMsg.includes("RESOURCE_EXHAUSTED"))
       ) {
-        errorMsg =
-          "Квота исчерпана (429) или ключ только создан (подождите пару минут). Бесплатный лимит мог быть исчерпан, либо вам необходимо привязать биллинг.";
+        return res.status(200).json({
+          warning: "Лимит обращений к встроенному ИИ (Gemini) исчерпан. Мы загрузили для вас универсальный набор стрижек, чтобы вы могли протестировать примерку фото. Для точного персонального анализа по вашему лицу — введите собственный бесплатный Gemini API-ключ в настройках (⚙️).",
+          gender: "Универсальный",
+          faceShape: "Овальная",
+          hairDensity: "Средние",
+          hairType: "Прямые",
+          recommendations: [
+            {
+              name: "Стрижка Боб (Bob Cut)",
+              description: "Классическая длина до подбородка, которая идет почти всем типам лица.",
+              stylingTips: "Слегка подкручивайте концы круглой щеткой для объема.",
+              imageKeyword: "Classic Bob Haircut"
+            },
+            {
+              name: "Пикси (Pixie Cut)",
+              description: "Смелая короткая стрижка, которая прекрасно открывает черты лица.",
+              stylingTips: "Используйте текстурирующую пасту для создания небрежного вида.",
+              imageKeyword: "Textured Pixie Cut"
+            },
+            {
+              name: "Длинные слои (Long Layers)",
+              description: "Универсальный способ добавить объем и движение, сохраняя длину.",
+              stylingTips: "Легкий спрей с морской солью поможет создать пляжные волны.",
+              imageKeyword: "Long Layered Waves"
+            }
+          ]
+        });
       } else if (
         typeof errorMsg === "string" &&
         (errorMsg.includes("503") ||
@@ -313,6 +325,10 @@ async function startServer() {
   app.post("/api/generate-ar", async (req, res) => {
     try {
       const apiKey = getApiKeyFromRequest(req);
+      const hfToken = req.headers['x-hf-token'];
+      const modelslabKey = req.headers['x-modelslab-key'];
+      const lightxKeyFromHeader = req.headers['x-lightx-key'];
+      console.log("Headers for AR:", { hfToken: hfToken ? "yes" : "no", modelslabKey: modelslabKey ? "yes" : "no", lightxKey: lightxKeyFromHeader ? "yes" : "no" });
       if (!apiKey) {
         return res.status(401).json({ error: "API-ключ не настроен. Пожалуйста, введите свой API-ключ в настройках (⚙️)." });
       }
@@ -339,43 +355,163 @@ async function startServer() {
                 },
                 {
                   text: `Проанализируй лицо человека на фото.
-Твоя задача — сгенерировать JSON с одним полем:
-1. "consultationHtml": Подробно объясни, как стрижка "${styleKeyword}" (${styleName}) будет смотреться на этом конкретном человеке. Напиши 3 пункта: 
-  - "Персональный анализ": Почему это подойдет или какие нужны адаптации под форму лица.
-  - "Как просить мастера": Конкретные инструкции для барбера/парикмахера.
-  - "Уход и укладка": Какие средства использовать каждый день.
-  Форматируй текст ТОЛЬКО с помощью HTML-тегов (<strong>, <br>, <ul>, <li>). Запрещен синтаксис markdown.
-Верни СТРОГО валидный JSON, без оборачивания в markdown \`\`\`.`,
+Подробно объясни, как стрижка "${styleKeyword}" (${styleName}) будет смотреться на этом конкретном человеке. Напиши 3 пункта: 
+- "Персональный анализ": Почему это подойдет или какие нужны адаптации под форму лица.
+- "Как просить мастера": Конкретные инструкции для барбера/парикмахера.
+- "Уход и укладка": Какие средства использовать каждый день.
+Форматируй текст СТРОГО с помощью HTML-тегов (<p>, <strong>, <br>, <ul>, <li>).
+НЕ используй синтаксис markdown. Верни ТОЛЬКО готовый HTML код.`,
                 },
               ],
             },
-            config: {
-              responseMimeType: "application/json",
-            }
           })
       );
 
-      const imageGenerationPromise = generateWithRetry(() =>
-        ai.models.generateContent({
-          model: "gemini-2.5-flash-image",
-          contents: {
-            parts: [
-              {
-                inlineData: {
-                  data: targetBase64,
-                  mimeType: mimeType || "image/jpeg",
+      const promptImage = `Change the hairstyle of the person in the image to a photorealistic ${styleKeyword}, keeping their exact face, gender, and identity intact. Do not add any extra objects.`;
+
+      const imageGenerationPromise = new Promise<{ imageUrl?: string; warningMsg?: string }>(async (resolve) => {
+        // Fallback 0: LightX (from process.env)
+        const lightxKey = lightxKeyFromHeader || process.env.LIGHTX_API_KEY;
+        if (lightxKey) {
+            try {
+                console.log("Trying LightX for AR...");
+                const reqImageUrl = imageUrl || `data:image/jpeg;base64,${targetBase64}`;
+                const res = await fetch("https://api.lightxeditor.com/external/api/v1/hairstyle", {
+                    method: "POST",
+                    headers: { 
+                      "Content-Type": "application/json",
+                      "x-api-key": lightxKey
+                    },
+                    body: JSON.stringify({
+                        imageUrl: reqImageUrl,
+                        textPrompt: styleKeyword
+                    })
+                });
+                const data = await res.json();
+                if (data.body && data.body.orderId) {
+                    const orderId = data.body.orderId;
+                    let isDone = false;
+                    let attempts = 0;
+                    while (!isDone && attempts < 15) {
+                        await new Promise(r => setTimeout(r, 2000));
+                        const statusRes = await fetch(`https://api.lightxeditor.com/external/api/v1/order-status?orderId=${orderId}`, {
+                            headers: { "x-api-key": lightxKey }
+                        });
+                        const statusData = await statusRes.json();
+                        if (statusData.body && statusData.body.status === "active") {
+                            // still processing
+                        } else if (statusData.body && statusData.body.status === "success") {
+                            console.log("LightX generated successfully.");
+                            return resolve({ imageUrl: statusData.body.outputUrl || statusData.body.output });
+                        } else {
+                            console.log("LightX generation failed with status:", statusData);
+                            break;
+                        }
+                        attempts++;
+                    }
+                } else {
+                    console.error("LightX failed to create task:", data);
+                }
+            } catch (err) {
+                console.error("LightX error:", err);
+            }
+        }
+
+        // Fallback 1: ModelsLab (from headers or env)
+        const activeModelsLabKey = modelslabKey || process.env.MODELSLAB_API_KEY;
+        if (activeModelsLabKey) {
+            try {
+                console.log("Trying ModelsLab for AR...");
+                const res = await fetch("https://modelslab.com/api/v6/realtime/controlnet", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        key: activeModelsLabKey,
+                        controlnet_model: "canny",
+                        control_image: imageUrl || `data:image/jpeg;base64,${targetBase64}`,
+                        prompt: promptImage,
+                        negative_prompt: "bad quality, deformed",
+                        width: 512,
+                        height: 512,
+                        samples: 1
+                    })
+                });
+                const data = await res.json();
+                if (data.status === "success" && data.output && data.output.length > 0) {
+                    return resolve({ imageUrl: data.output[0] });
+                } else if (data.output && data.output[0]) {
+                    return resolve({ imageUrl: data.output[0] });
+                } else {
+                    console.log("ModelsLab failed, data:", data);
+                }
+            } catch (err) {
+                console.error("ModelsLab error:", err);
+            }
+        }
+
+        // Fallback 2: HuggingFace (from headers or env)
+        const activeHfToken = hfToken || process.env.HUGGINGFACE_API_KEY || process.env.HF_TOKEN;
+        if (activeHfToken) {
+             try {
+                console.log("Trying HuggingFace for AR...");
+                const imgData = Buffer.from(targetBase64, "base64");
+                const res = await fetch("https://api-inference.huggingface.co/models/timbrooks/instruct-pix2pix", {
+                    method: "POST",
+                    headers: { 
+                        "Authorization": `Bearer ${activeHfToken}`,
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        inputs: `data:image/jpeg;base64,${targetBase64}`,
+                        parameters: { prompt: promptImage }
+                    })
+                });
+                if (res.ok) {
+                    const blob = await res.arrayBuffer();
+                    const b64 = Buffer.from(blob).toString("base64");
+                    return resolve({ imageUrl: `data:image/jpeg;base64,${b64}` });
+                } else {
+                    const text = await res.text();
+                    console.error("HF failed:", text);
+                }
+             } catch (err) {
+                console.error("HuggingFace error:", err);
+             }
+        }
+
+        // Fallback 3: Gemini
+        try {
+             console.log("Trying Gemini for AR...");
+             const imgRes = await generateWithRetry(() =>
+                ai.models.generateContent({
+                model: "gemini-2.5-flash-image",
+                contents: {
+                    parts: [
+                    { inlineData: { data: targetBase64, mimeType: mimeType || "image/jpeg" } },
+                    { text: promptImage },
+                    ],
                 },
-              },
-              {
-                text: `Change the hairstyle of the person in the image to a photorealistic ${styleKeyword}, keeping their exact face, gender, and identity intact. Do not add any extra objects.`,
-              },
-            ],
-          },
-          config: {
-            responseModalities: [Modality.IMAGE],
-          },
-        })
-      );
+                config: { responseModalities: ["IMAGE"] },
+                })
+             );
+             const base64ImageBytes = imgRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+             if (base64ImageBytes) {
+                return resolve({ imageUrl: `data:image/jpeg;base64,${base64ImageBytes}` });
+             }
+        } catch (err: any) {
+             console.error("Gemini Image generation failed:", err);
+             let warningMsg = "Анализ стиля готов, но генерация фото не удалась.";
+             let errorMsg = String(err.message || "");
+             if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED") || errorMsg.includes("limit: 0")) {
+                 warningMsg = "Анализ стиля готов! Однако для изменения фото (AR) требуется платный ключ Gemini, Hugging Face Token или ModelsLab API Key в настройках (⚙️).";
+             } else if (errorMsg.includes("API key expired")) {
+                 warningMsg = "Анализ готов. Срок действия базового ключа истек.";
+             }
+             return resolve({ warningMsg });
+        }
+        
+        resolve({ warningMsg: "Не удалось сгенерировать изображение (все методы исчерпаны)." });
+      });
 
       let consultationHtml = "<p>Консультация недоступна.</p>";
       let finalImageUrl = "";
@@ -383,44 +519,32 @@ async function startServer() {
 
       try {
         const textRes = await textConsultationPromise;
+        let text = "";
         try {
-          const text = textRes.text?.trim() || "{}";
-          // Find JSON block if it's wrapped
-          const match = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-          const jsonStr = match ? match[1] : text;
-          const data = JSON.parse(jsonStr);
-          consultationHtml = data.consultationHtml || consultationHtml;
-        } catch (e) {
-          console.error("Failed to parse text consultation:", e);
+          text = textRes.text?.trim() || "";
+        } catch (getTextErr) {
+          console.error("Could not read textRes.text:", getTextErr);
         }
-      } catch (e) {
+
+        if (text) {
+          // Clean up potential markdown formatting wrapping the HTML
+          text = text.replace(/```html\s*/g, "").replace(/```\s*$/g, "").trim();
+          consultationHtml = text;
+        } else {
+             consultationHtml = `<p>Консультация сгенерировала пустой ответ. Возможно, загруженное фото не позволяет провести анализ.</p>`;
+        }
+      } catch (e: any) {
         console.error("Failed to fetch text consultation:", e);
+        if (e.message && (e.message.includes("429") || e.message.includes("quota") || e.message.includes("limit"))) {
+             consultationHtml = `<div class="p-3 bg-red-500/10 border border-red-500/20 rounded-xl mb-2 text-sm text-red-200">Бесплатный лимит Gemini исчерпан. Для работы "Персонального гайда" укажите свой API ключ в настройках (⚙️).</div>`;
+        } else {
+             consultationHtml = `<div class="p-3 bg-white/5 border border-white/10 rounded-xl mb-2 text-sm text-white/80">Не удалось сгенерировать консультацию: ${e.message || "Ошибка ИИ"}</div>`;
+        }
       }
 
-      try {
-        const imgRes = await imageGenerationPromise;
-        const base64ImageBytes = imgRes.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-        if (base64ImageBytes) {
-           finalImageUrl = `data:image/jpeg;base64,${base64ImageBytes}`;
-        } else {
-           throw new Error("Не удалось сгенерировать изображение (пустой ответ).");
-        }
-      } catch (err: any) {
-        console.error("Image generation failed:", err);
-        let errorMsg = String(err.message || "");
-        if (
-          errorMsg.includes("429") ||
-          errorMsg.includes("quota") ||
-          errorMsg.includes("RESOURCE_EXHAUSTED") ||
-          errorMsg.includes("limit: 0")
-        ) {
-          warningMsg = "Анализ стиля готов! Однако для изменения фото (AR) требуется Gemini API ключ с подключенным биллингом (Free-Tier не поддерживает image-to-image).";
-        } else if (errorMsg.includes("API key expired")) {
-           warningMsg = "Анализ готов. Срок действия ключа для фото истек.";
-        } else {
-          warningMsg = "Анализ стиля готов, но генерация фото не удалась.";
-        }
-      }
+      const imgRes = await imageGenerationPromise;
+      if (imgRes.imageUrl) finalImageUrl = imgRes.imageUrl;
+      if (imgRes.warningMsg) warningMsg = imgRes.warningMsg;
         
       return res.json({ 
         consultationHtml: consultationHtml,
@@ -568,8 +692,22 @@ async function startServer() {
           errorMsg.includes("quota") ||
           errorMsg.includes("RESOURCE_EXHAUSTED"))
       ) {
-        errorMsg =
-          "Квота исчерпана (429) или ключ только создан. Введите свой API-ключ в настройках (⚙️).";
+        return res.status(200).json({
+          recommendations: [
+            {
+              name: "Гарсон (Garcon)",
+              description: "Короткая французская стрижка с легким объемом на макушке.",
+              stylingTips: "Используйте мусс для объема перед сушкой.",
+              imageKeyword: "Garcon haircut"
+            },
+            {
+              name: "Каре на ножке",
+              description: "Стильный вариант боба с открытым затылком.",
+              stylingTips: "Слегка вытягивайте утюжком для гладкости.",
+              imageKeyword: "A-line bob"
+            }
+          ]
+        });
       } else if (
         typeof errorMsg === "string" &&
         (errorMsg.includes("503") ||

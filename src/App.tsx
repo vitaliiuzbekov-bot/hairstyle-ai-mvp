@@ -24,7 +24,8 @@ const LazyImage = ({ keyword, gender, uniqueName, description, className, autoLo
           'Content-Type': 'application/json',
           'x-custom-api-key': apiKey || '',
                     'x-hf-token': localStorage.getItem('hfToken') || '',
-          'x-modelslab-key': localStorage.getItem('modelslabKey') || ''
+          'x-modelslab-key': localStorage.getItem('modelslabKey') || '',
+          'x-lightx-key': localStorage.getItem('lightxKey') || ''
         },
         body: JSON.stringify({ keyword, gender })
       });
@@ -102,6 +103,7 @@ const LazyImage = ({ keyword, gender, uniqueName, description, className, autoLo
 };
 
 interface AnalysisResult {
+  warning?: string;
   gender: string;
   faceShape: string;
   hairDensity: string;
@@ -149,16 +151,21 @@ export default function App() {
   const [modelslabKey, setModelslabKey] = useState<string>(() => {
     return localStorage.getItem('modelslabKey') || '';
   });
+  const [lightxKey, setLightxKey] = useState<string>(() => {
+    return localStorage.getItem('lightxKey') || '';
+  });
   const [customGeminiApiKey, setCustomGeminiApiKey] = useState<string>(() => {
     return localStorage.getItem('customGeminiApiKey') || '';
   });
 
-  const handleSaveApiKey = (hf: string, modelslab: string, gemini: string) => {
+  const handleSaveApiKey = (hf: string, modelslab: string, lightx: string, gemini: string) => {
     setHfToken(hf);
     setModelslabKey(modelslab);
+    setLightxKey(lightx);
     setCustomGeminiApiKey(gemini);
     localStorage.setItem('hfToken', hf);
     localStorage.setItem('modelslabKey', modelslab);
+    localStorage.setItem('lightxKey', lightx);
     localStorage.setItem('customGeminiApiKey', gemini);
     setIsSettingsOpen(false);
   };
@@ -450,7 +457,8 @@ export default function App() {
           'Content-Type': 'application/json',
           'x-custom-api-key': customGeminiApiKey || '',
                     'x-hf-token': hfToken || '',
-          'x-modelslab-key': modelslabKey || ''
+          'x-modelslab-key': modelslabKey || '',
+          'x-lightx-key': lightxKey || ''
         },
         body: JSON.stringify({ imageBase64, imageUrl, mimeType })
       });
@@ -487,7 +495,8 @@ export default function App() {
           'Content-Type': 'application/json',
           'x-custom-api-key': customGeminiApiKey || '',
                     'x-hf-token': hfToken || '',
-          'x-modelslab-key': modelslabKey || ''
+          'x-modelslab-key': modelslabKey || '',
+          'x-lightx-key': lightxKey || ''
         },
         body: JSON.stringify({ 
           imageBase64, 
@@ -568,7 +577,8 @@ export default function App() {
           'Content-Type': 'application/json',
           'x-custom-api-key': customGeminiApiKey || '',
                     'x-hf-token': hfToken || '',
-          'x-modelslab-key': modelslabKey || ''
+          'x-modelslab-key': modelslabKey || '',
+          'x-lightx-key': lightxKey || ''
         },
         body: JSON.stringify({ imageBase64, imageUrl, mimeType: mimeType || "image/jpeg", existingNames })
       });
@@ -687,18 +697,23 @@ export default function App() {
                           onChange={handleFileUpload} 
                         />
                       </div>
-                      <div className="mt-5 flex items-start gap-3 px-2 w-full max-w-[340px]">
+                      <div 
+                        className="mt-5 flex items-start gap-3 px-2 w-full max-w-[340px] cursor-pointer"
+                        onClick={() => {
+                          setConsentGiven(!consentGiven);
+                          if (!consentGiven) setConsentError(false);
+                        }}
+                      >
                         <input 
                           type="checkbox" 
                           id="consent152" 
                           checked={consentGiven}
                           onChange={(e) => {
-                            setConsentGiven(e.target.checked);
-                            if (e.target.checked) setConsentError(false);
+                            // Handled by the wrapper onClick, but keep this for React controlled component warnings
                           }}
-                          className="mt-0.5 w-4 h-4 rounded border-white/20 bg-black/30 text-white/90 accent-white/80 cursor-pointer flex-shrink-0"
+                          className="mt-0.5 w-[18px] h-[18px] rounded border-white/20 bg-black/30 text-white/90 accent-[#2AABEE] cursor-pointer flex-shrink-0 pointer-events-none"
                         />
-                        <label htmlFor="consent152" className="text-[11px] sm:text-xs text-white/40 leading-relaxed cursor-pointer select-none hover:text-white/60 transition-colors">
+                        <label htmlFor="consent152" className="text-[11px] sm:text-xs text-white/40 leading-relaxed cursor-pointer select-none hover:text-white/60 transition-colors pointer-events-none">
                           Я даю согласие на обработку моих персональных (биометрических) данных в соответствии с ФЗ-152 для обработки селфи нейросетью. Фото не хранится на сервере.
                         </label>
                       </div>
@@ -759,6 +774,13 @@ export default function App() {
           {results && (
             <div className="col-span-1 lg:col-span-7 flex flex-col gap-6 lg:gap-8 animate-in fade-in slide-in-from-right-12 duration-1000 fill-mode-both">
               
+              {results.warning && (
+                <div className="bg-red-500/10 border border-red-500/20 text-red-200 px-5 py-4 rounded-2xl flex items-start gap-4">
+                  <AlertCircle className="shrink-0 mt-0.5" size={20} />
+                  <p className="text-sm leading-relaxed">{results.warning}</p>
+                </div>
+              )}
+
               {/* Vitals */}
               <div className="grid grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
                 <div className="glass-panel border border-white/10 rounded-2xl p-5 md:p-6 shadow-sm relative overflow-hidden group hover:border-white/10 transition-colors">
@@ -1140,6 +1162,18 @@ export default function App() {
                   />
 
                   <label className="block text-[11px] uppercase tracking-widest text-white/40 mb-2 font-semibold hover:text-white/70 transition-colors">
+                    LightX API Key (AR Примерка)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="lightx key..."
+                    value={lightxKey}
+                    onChange={(e) => setLightxKey(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white/90 placeholder-white/20 focus:outline-none focus:border-[#2AABEE] mb-4 transition-colors"
+                    autoComplete="off"
+                  />
+
+                  <label className="block text-[11px] uppercase tracking-widest text-white/40 mb-2 font-semibold hover:text-white/70 transition-colors">
                     ModelsLab API Key (Stable Diffusion)
                   </label>
                   <input
@@ -1156,7 +1190,7 @@ export default function App() {
                   </label>
                   <input
                     type="text"
-                    placeholder="AIzaSy..."
+                    placeholder="Ваш Gemini API ключ..."
                     value={customGeminiApiKey}
                     onChange={(e) => setCustomGeminiApiKey(e.target.value)}
                     className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white/90 placeholder-white/20 focus:outline-none focus:border-[#2AABEE] transition-colors"
@@ -1169,7 +1203,16 @@ export default function App() {
                     </p>
                     
                     <div>
-                      <strong className="text-white">Как получить ModelsLab API Key:</strong>
+                      <strong className="text-white">Как получить LightX API Key (Основной метод AR):</strong>
+                      <ol className="list-decimal pl-4 mt-1 space-y-1 mb-4">
+                        <li>Зарегистрируйтесь на <a href="https://www.lightxeditor.com/api/" target="_blank" rel="noopener noreferrer" className="text-[#2AABEE] hover:underline">LightX API</a>.</li>
+                        <li>Перейдите в Dashboard (Dashboard -{'>'} API Keys).</li>
+                        <li>Скопируйте ключ и вставьте сюда.</li>
+                      </ol>
+                    </div>
+
+                    <div>
+                      <strong className="text-white">Как получить ModelsLab API Key (Запасной):</strong>
                       <ol className="list-decimal pl-4 mt-1 space-y-1">
                         <li>Зарегистрируйтесь на <a href="https://modelslab.com" target="_blank" rel="noopener noreferrer" className="text-[#2AABEE] hover:underline">modelslab.com</a>.</li>
                         <li>В личном кабинете слева в меню выберите <strong>API Docs &amp; Keys</strong> -{'>'} <strong>API Keys</strong> (или откройте <a href="https://modelslab.com/dashboard/api-keys" target="_blank" rel="noopener noreferrer" className="text-[#2AABEE] hover:underline">ссылку</a>).</li>

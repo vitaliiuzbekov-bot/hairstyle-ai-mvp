@@ -1,20 +1,31 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# AI Hairstyle Generator - Render Deployment
 
-# Run and deploy your AI Studio app
+## Overview
+This is a production-ready Next.js (Express + Vite) application for AI hairstyle generation. It uses LightX AI as the primary provider with automatic fallbacks to Hugging Face and ModelsLab. All API keys are securely managed on the server side via environment variables.
 
-This contains everything you need to run your app locally.
+## Environment Variables
+Configure the following in your Render dashboard (or `.env.local` for local development):
 
-View your app in AI Studio: https://ai.studio/apps/0640fe2b-9f22-4893-8020-7953053ab2bd
+- `GEMINI_API_KEY`: Required for style analysis (text generation). Note: Requires a paid/billing-enabled Gemini key if you want to use Gemini as the final image fallback.
+- `LIGHTX_API_KEY`: Primary AI Hairstyle Provider key. Obtain from https://www.lightxeditor.com/api (Dashboard -> API Keys).
+- `HUGGINGFACE_API_KEY`: Fallback Provider 1. Get from https://huggingface.co/settings/tokens.
+- `MODELSLAB_API_KEY`: Fallback Provider 2.
 
-## Run Locally
+## Deployment on Render
+1. Connect this repository to Render.
+2. Select "Web Service" and setup as Node.js environment.
+3. Build Command: `npm install && npm run build`
+4. Start Command: `npm start`
+5. Add the Environment Variables under the "Environment" tab.
 
-**Prerequisites:**  Node.js
+## Local Development
+1. Clone the repository.
+2. Create `.env.local` using `.env.example` as a template.
+3. Run `npm install`
+4. Run `npm run dev`
+5. Visit `http://localhost:3000`
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Architecture & Security
+- **No CORS Issues**: All external API calls are made from the `server.ts` backend. The frontend only communicates with the `/api/*` endpoints.
+- **Secure Credentials**: API Keys are safely stored in the backend and never exposed to the client.
+- **Resilient AI Pipeline**: Uses a robust fallback chain (LightX -> ModelsLab -> HuggingFace -> Gemini) to maintain high availability.
